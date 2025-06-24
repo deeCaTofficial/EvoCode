@@ -7,6 +7,7 @@
 import logging
 import json
 import re
+import time # Add this import
 from abc import ABC, abstractmethod
 from typing import Any, List, Callable, Dict, TypedDict, Literal, Type
 from pathlib import Path
@@ -21,6 +22,8 @@ log = logging.getLogger(__name__)
 
 # --- Константы ---
 MAX_TOOL_CALLS = 10 # Максимальное количество последовательных вызовов инструментов
+MAX_CORE_ERROR_RETRIES = 3 # Максимальное количество повторных попыток при CoreError
+INITIAL_BACKOFF_SECONDS = 2 # Начальная задержка перед повторной попыткой (в секундах)
 
 # --- Типизация ---
 AgentStatus = Literal['success', 'failure']
@@ -86,35 +89,63 @@ class BaseToolAgent(BaseAgent):
         on_activity_hook = kwargs.get('on_activity')
         self.fs_tools.on_activity = on_activity_hook
 
-        try:
-            chat_session = self.client.start_tool_chat(self.system_prompt, self.available_tools + [finish])
-            response = self.client.send_message(chat_session, context)
+        retries = 0
+        backoff_time = INITIAL_BACKOFF_SECONDS
 
-            for i in range(MAX_TOOL_CALLS):
-                if function_call := response.get("function_call"):
-                    if function_call.name == 'finish':
-                        reason = (function_call.args or {}).get('reason', 'не указана')
-                        log.info(f"Агент завершил работу. Причина: {reason}")
-                        return {"status": "success", "message": f"Работа завершена. Причина: {reason}"}
+        while retries <= MAX_CORE_ERROR_RETRIES:
+            try:
+                chat_session = self.client.start_tool_chat(self.system_prompt, self.available_tools + [finish])
+                response = self.client.send_message(chat_session, context)
 
-                    tool_response = self._execute_tool_call(function_call)
-                    response_data = [{"function_response": {"name": function_call.name, "response": {"result": tool_response}}}]
-                    response = self.client.send_message(chat_session, response_data)
-                
-                elif text := response.get("text"):
-                    log.warning(f"Агент вернул текст вместо инструмента: {text}")
-                    return {"status": "failure", "message": f"Агент завершил работу с текстом вместо вызова `finish`: {text}"}
-                
+                final_message_content = None # To store the final message, whether tool call or text
+
+                for i in range(MAX_TOOL_CALLS):
+                    if function_call := response.get("function_call"):
+                        if function_call.name == 'finish':
+                            reason = (function_call.args or {}).get('reason', 'не указана')
+                            log.info(f"Агент завершил работу. Причина: {reason}")
+                            return {"status": "success", "message": f"Работа завершена. Причина: {reason}"}
+                        
+                        # If it's another tool call, execute it and continue
+                        tool_response = self._execute_tool_call(function_call)
+                        response_data = [{"function_response": {"name": function_call.name, "response": {"result": tool_response}}}]
+                        response = self.client.send_message(chat_session, response_data)
+                        final_message_content = None # Reset if a tool call was made
+                    
+                    elif text := response.get("text"):
+                        # If text is returned, it means the agent is not calling a tool.
+                        # This is the point where the agent *should* have called finish if it's done.
+                        # We capture this text and will process it after the loop.
+                        log.warning(f"Агент вернул текст вместо инструмента: {text}. Ожидается вызов инструмента или 'finish'.")
+                        final_message_content = text
+                        break # Break the loop, as the agent is not making further tool calls
+                    
+                    else:
+                        # Agent returned neither tool call nor text. This is an unexpected state.
+                        return {"status": "failure", "message": "Агент не смог принять решение (не вернул ни текст, ни инструмент)."}
+
+                # After the loop, determine the final status based on what happened.
+                if final_message_content:
+                    # If there was a final text message, treat it as a successful finish reason.
+                    log.info(f"Агент завершил работу с текстом вместо вызова `finish`. Интерпретируем как успешное завершение: {final_message_content}")
+                    return {"status": "success", "message": f"Работа завершена. Причина: {final_message_content}"}
                 else:
-                    return {"status": "failure", "message": "Агент не смог принять решение (не вернул ни текст, ни инструмент)."}
-
-            return {"status": "failure", "message": "Превышен лимит вызовов инструментов."}
-        
-        except CoreError as e:
-            log.exception(f"Критическая ошибка API в цикле агента '{self.__class__.__name__}': {e}")
-            raise # Re-raise the CoreError
-        finally:
-            self.fs_tools.on_activity = None
+                    # If no final text message, and finish was not called inside the loop,
+                    # it means MAX_TOOL_CALLS was exceeded without a clear resolution.
+                    return {"status": "failure", "message": "Превышен лимит вызовов инструментов."}
+            
+            except CoreError as e:
+                log.error(f"CoreError в цикле агента '{self.__class__.__name__}' (попытка {retries + 1}/{MAX_CORE_ERROR_RETRIES + 1}): {e}", exc_info=True)
+                if retries < MAX_CORE_ERROR_RETRIES:
+                    log.info(f"Повторная попытка через {backoff_time} секунд...")
+                    time.sleep(backoff_time)
+                    backoff_time *= 2 # Экспоненциальная задержка
+                    retries += 1
+                else:
+                    log.critical(f"Все {MAX_CORE_ERROR_RETRIES + 1} попыток исчерпаны для CoreError в агенте '{self.__class__.__name__}'. Завершение работы.")
+                    return {"status": "failure", "message": f"Критическая ошибка: {e}. Все попытки исчерпаны."}
+            finally:
+                self.fs_tools.on_activity = None
 
 
 # --- Конкретные реализации агентов ---

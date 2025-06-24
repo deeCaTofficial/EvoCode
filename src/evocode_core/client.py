@@ -25,7 +25,7 @@ log = logging.getLogger(__name__)
 
 # --- Константы ---
 MAX_API_RETRIES = 3
-INITIAL_RETRY_DELAY_SECONDS = 5
+INITIAL_RETRY_DELAY_SECONDS = 25
 
 # --- Типизация для ответов от клиента ---
 class GeminiResponse(TypedDict, total=False):
