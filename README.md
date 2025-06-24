@@ -22,7 +22,7 @@
 
 1.  **Клонируйте репозиторий:**
     ```bash
-    git clone https://github.com/ВАШ_НИКНЕЙМ/EvoCode-AI.git
+    git clone https://github.com/deeCaTofficial/EvoCode
     cd EvoCode-AI
     ```
 
