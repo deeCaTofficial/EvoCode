@@ -15,3 +15,19 @@ class APIKeyNotFoundError(CoreError):
 class ContentBlockedError(CoreError):
     """Вызывается, когда Gemini блокирует ответ из-за настроек безопасности."""
     pass
+
+class GeminiRateLimitError(CoreError):
+    """Вызывается, когда превышен лимит запросов к Gemini API (429)."""
+    pass
+
+class GeminiServiceUnavailableError(CoreError):
+    """Вызывается, когда сервис Gemini API временно недоступен (503)."""
+    pass
+
+class GeminiInternalServerError(CoreError):
+    """Вызывается, когда Gemini API возвращает внутреннюю ошибку сервера (500)."""
+    pass
+
+class GeminiAPIError(CoreError):
+    """Базовый класс для всех специфических ошибок Gemini API."""
+    pass

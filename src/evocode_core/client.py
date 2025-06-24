@@ -19,7 +19,7 @@ except ImportError:
     # Эта ошибка будет поймана на уровне Application при запуске
     raise
 
-from .exceptions import APIKeyNotFoundError, ContentBlockedError, CoreError
+from .exceptions import APIKeyNotFoundError, ContentBlockedError, CoreError, GeminiRateLimitError, GeminiServiceUnavailableError, GeminiInternalServerError, GeminiAPIError
 
 log = logging.getLogger(__name__)
 
@@ -44,20 +44,52 @@ def retry_on_api_error(func: Callable) -> Callable:
         for attempt in range(MAX_API_RETRIES):
             try:
                 return func(*args, **kwargs)
-            except (exceptions.ResourceExhausted, exceptions.ServiceUnavailable, exceptions.InternalServerError) as e:
-                last_exception = e
-                delay = INITIAL_RETRY_DELAY_SECONDS * (2 ** attempt)
-                log.warning(
-                    f"Ошибка API ({type(e).__name__}). Попытка {attempt + 1}/{MAX_API_RETRIES}. "
-                    f"Повтор через {delay} сек..."
-                )
-                time.sleep(delay)
+            # Пропускаем наши кастомные ошибки, чтобы не оборачивать их в CoreError
+            except (ContentBlockedError, APIKeyNotFoundError):
+                raise
             except exceptions.GoogleAPICallError as e:
-                log.error(f"Невосстановимая ошибка вызова API: {e}")
-                raise CoreError(f"Ошибка вызова API: {e}") from e
+                last_exception = e
+                # Проверяем, является ли ошибка потенциально временной (429, 500, 503)
+                if e.code in [429, 500, 503] and attempt < MAX_API_RETRIES - 1:
+                    delay = INITIAL_RETRY_DELAY_SECONDS * (2 ** attempt)
+                    log.warning(
+                        f"Ошибка API ({type(e).__name__}, код: {e.code}). Попытка {attempt + 1}/{MAX_API_RETRIES}. "
+                        f"Повтор через {delay} сек. Оригинальное сообщение: {e}"
+                    )
+                    time.sleep(delay)
+                    continue
 
-        log.error("Не удалось выполнить запрос к API после нескольких попыток.")
-        raise CoreError("Превышен лимит запросов к API или сервис временно недоступен.") from last_exception
+                # Если ошибка не предполагает повторных попыток или попытки исчерпаны,
+                # выбрасываем кастомное исключение
+                log.error(f"Невосстановимая ошибка вызова API (код: {e.code}): {e}", exc_info=True)
+                if e.code == 429:
+                    raise GeminiRateLimitError(f"Превышен лимит запросов к Gemini API: {e}") from e
+                elif e.code == 503:
+                    raise GeminiServiceUnavailableError(f"Сервис Gemini API временно недоступен: {e}") from e
+                elif e.code == 500:
+                    raise GeminiInternalServerError(f"Внутренняя ошибка сервера Gemini API: {e}") from e
+                else:
+                    raise GeminiAPIError(f"Неизвестная ошибка Gemini API (код: {e.code}): {e}") from e
+            except Exception as e: # Ловим любые другие неожиданные ошибки
+                log.error(f"Неожиданная ошибка при вызове API: {e}", exc_info=True)
+                raise CoreError(f"Неожиданная ошибка: {e}") from e
+
+        # Этот блок выполнится, только если цикл завершился (все попытки провалились)
+        log.error(f"Не удалось выполнить запрос к API после {MAX_API_RETRIES} попыток. Последняя ошибка: {last_exception}")
+        # Создаем и выбрасываем исключение на основе последней зафиксированной ошибки
+        if isinstance(last_exception, exceptions.GoogleAPICallError):
+            if last_exception.code == 429:
+                raise GeminiRateLimitError(f"Превышен лимит запросов к Gemini API после повторных попыток: {last_exception}") from last_exception
+            elif last_exception.code == 503:
+                raise GeminiServiceUnavailableError(f"Сервис Gemini API недоступен после повторных попыток: {last_exception}") from last_exception
+            elif last_exception.code == 500:
+                raise GeminiInternalServerError(f"Внутренняя ошибка сервера Gemini API после повторных попыток: {last_exception}") from last_exception
+            else:
+                raise GeminiAPIError(f"Неизвестная ошибка Gemini API после повторных попыток (код: {last_exception.code}): {last_exception}") from last_exception
+        
+        # Фоллбэк на случай, если цикл завершился без last_exception (теоретически невозможно)
+        raise CoreError("Не удалось выполнить запрос к API после нескольких попыток без известной последней ошибки.")
+
     return wrapper
 
 class GeminiClient:

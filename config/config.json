@@ -1,5 +1,4 @@
 {
     "log_file": "app_from_config.log",
-    "prompt_config_path": "config/prompts.yaml",
-    "api_key": "sk-AIzaSyCF8ZBxuVnsfozL_Ke960vJ_ZXzlx2mk08"
+    "prompt_config_path": "config/prompts.yaml"
 }
