@@ -37,6 +37,7 @@ class MainWindow(QMainWindow):
         self.worker: Optional[Worker] = None
         self.scanner_worker: Optional[Worker] = None
         self.project_path: Optional[Path] = None
+        self.is_running = False
 
         self._setup_ui()
         self._create_connections()
@@ -222,7 +223,7 @@ class MainWindow(QMainWindow):
             
     def _create_connections(self):
         self.select_dir_button.clicked.connect(self.select_project_directory)
-        self.run_button.clicked.connect(self.start_processing)
+        self.run_button.clicked.connect(self.run_evolution)
         self.cancel_button.clicked.connect(self.cancel_processing)
         self.file_tree.expanded.connect(self._on_item_expanded)
         self.file_tree.collapsed.connect(self._on_item_collapsed)
@@ -311,10 +312,9 @@ class MainWindow(QMainWindow):
             self.thread.quit()
             self.thread.wait()
 
-    def start_processing(self):
-        if not self.project_path:
-            msg_box = CustomMessageBox("Проект не выбран", "Пожалуйста, выберите директорию проекта.", 'fa5s.exclamation-triangle', PALETTE['accent_danger'], parent=self)
-            msg_box.exec()
+    def run_evolution(self):
+        """Запускает процесс эволюции в отдельном потоке."""
+        if self.is_running:
             return
 
         self._set_ui_enabled(False)
@@ -322,10 +322,20 @@ class MainWindow(QMainWindow):
         self.log_output.clear()
         self.progress_bar.setValue(0)
         self.status_icon.setPixmap(qta.icon('fa5s.hourglass-half', color=PALETTE['text_muted']).pixmap(QSize(16, 16)))
-        
+
+        project_path = Path.cwd()
+        num_cycles = self.cycles_selector.value()
+
+        self.log_message(f"Запуск EvoCode для проекта: {project_path} на {num_cycles} циклов...", "#a9a9a9")
+
+        task = EvoTask(
+            project_path=project_path,
+            cycles=num_cycles,
+            prompts=self.prompts
+        )
+
         self.thread = QThread()
-        evo_task = EvoTask(self.project_path, self.cycles_selector.value(), self.prompts)
-        self.worker = Worker(evo_task)
+        self.worker = Worker(task)
         self.worker.moveToThread(self.thread)
         
         self.worker.finished.connect(self.on_processing_finished)
@@ -352,7 +362,10 @@ class MainWindow(QMainWindow):
             if self.progress_bar.value() > 0: self.progress_bar.setValue(100)
         else:
              self.status_icon.setPixmap(qta.icon('fa5s.times-circle', color=PALETTE['accent_danger']).pixmap(QSize(16, 16)))
+        
+        self.is_running = False
         self._set_ui_enabled(True)
+        
         if self.thread and self.thread.isRunning():
             self.thread.quit()
             self.thread.wait()
@@ -411,3 +424,6 @@ class MainWindow(QMainWindow):
             self.thread.quit()
             self.thread.wait()
         event.accept()
+
+    def log_message(self, message: str, color: str):
+        self.log_output.appendHtml(f'<span style="color: {color};">{message}</span>')
