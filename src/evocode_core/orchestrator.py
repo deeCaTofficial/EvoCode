@@ -217,6 +217,7 @@ class Orchestrator:
             current_code_context = self._read_project_context()
             coder_task = (
                 f"Твоя предыдущая попытка провалила проверку качества. Отчет от QA: '{qa_result['message']}'.\n\n"
+                f"Ты внес следующие изменения: '{coder_result['message']}'.\n\n"
                 f"Вот АКТУАЛЬНОЕ состояние кода:\n{current_code_context}\n\n"
                 f"ИСПРАВЬ ЭТУ ОШИБКУ."
             )

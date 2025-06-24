@@ -130,9 +130,15 @@ class GeminiClient:
         if not response.candidates or not response.candidates[0].content.parts:
             raise CoreError("AI вернул пустой или невалидный ответ.")
 
-        part = response.candidates[0].content.parts[0]
+        # ИСПРАВЛЕНИЕ: Проверяем все части на наличие валидного вызова функции
+        for part in response.candidates[0].content.parts:
+            if hasattr(part, 'function_call') and part.function_call.name:
+                return {"function_call": part.function_call}
         
-        if hasattr(part, 'function_call') and part.function_call.name:
-            return {"function_call": part.function_call}
-        
-        return {"text": response.text}
+        # Если вызовов функции нет, значит, ожидаем текст.
+        # Защищаемся от ошибки конвертации на случай смешанного контента.
+        try:
+            return {"text": response.text}
+        except ValueError as e:
+            log.warning(f"Не удалось извлечь текст из ответа, который не содержал function_call. Ошибка: {e}")
+            raise CoreError("AI вернул смешанный или невалидный ответ (не текст и не function_call).") from e
