@@ -116,7 +116,7 @@ class FileSystemTools:
         try:
             target_path = self._resolve_path(test_path)
             command = [sys.executable, "-m", "pytest", str(target_path)]
-            result = subprocess.run(command, capture_output=True, text=True, encoding='utf-8', cwd=self.project_root)
+            result = subprocess.run(command, capture_output=True, text=True, cwd=self.project_root)
             if result.returncode == 0: return f"УСПЕХ: Все тесты пройдены.\n\nВывод:\n{result.stdout}"
             elif result.returncode == 5: return f"ИНФО: Тесты не найдены по пути '{test_path}'.\n\nВывод:\n{result.stdout}"
             else: return f"ПРОВАЛ: Тесты не пройдены (код {result.returncode}).\n\nSTDOUT:\n{result.stdout}\nSTDERR:\n{result.stderr}"
