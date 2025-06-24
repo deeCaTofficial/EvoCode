@@ -155,10 +155,23 @@ class FileSystemTools:
         
     def git_stash_commit(self, message: str) -> str:
         """Применяет изменения из stash и делает коммит."""
-        self._run_git_command('stash', 'pop')
+        try:
+            self._run_git_command('stash', 'pop')
+        except ToolError as e:
+            if 'No stash entries found' in str(e):
+                return "AI не внес фактических изменений в код. Коммит не требуется."
+            raise  # Перебрасываем другие ошибки Git
+
         self._run_git_command('add', '.')
-        self._run_git_command('commit', '-m', message)
-        return f"Изменения успешно применены и закоммичены с сообщением: '{message}'"
+        
+        # Проверяем, есть ли что-то в индексе для коммита
+        try:
+            # Команда `diff-index` вернет ошибку (не-нулевой код), если есть изменения
+            self._run_git_command('diff-index', '--quiet', 'HEAD')
+            return "Изменения были применены, но не привели к фактическим правкам. Коммит не создан."
+        except ToolError:
+            # Есть изменения, делаем коммит
+            return self._run_git_command('commit', '-m', message)
 
 def finish(reason: str) -> str:
     """
