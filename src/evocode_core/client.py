@@ -100,7 +100,14 @@ class GeminiClient:
         response = model.generate_content(user_prompt)
         if not response.parts and hasattr(response, 'prompt_feedback') and response.prompt_feedback.block_reason:
             raise ContentBlockedError(f"Ответ был заблокирован: {response.prompt_feedback.block_reason.name}")
-        return response.text
+        
+        try:
+            # Пытаемся получить текст напрямую
+            return response.text
+        except ValueError as e:
+            # Обработка случая, когда модель возвращает function_call вместо текста
+            log.warning(f"Не удалось преобразовать ответ в текст (возможно, был возвращен function_call): {e}")
+            return "[AI-агент вернул нетекстовый ответ, который не удалось обработать]"
 
     def start_tool_chat(self, system_prompt: str, tools: List[Callable]) -> ChatSession:
         """Начинает новую сессию чата с инструментами, используя мощную модель."""

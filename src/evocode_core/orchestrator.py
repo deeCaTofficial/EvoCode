@@ -121,7 +121,11 @@ class Orchestrator:
         
         try:
             if not self.fs_tools.git_is_clean():
-                raise CoreError("Рабочая директория Git не 'чистая'. Пожалуйста, сделайте коммит или отмените изменения перед запуском.")
+                self._report_progress("Рабочая директория не 'чистая'. Автоматический коммит изменений...")
+                self.fs_tools.git_add_all()
+                self.fs_tools.git_commit("Auto-commit: Сохранение незафиксированных изменений перед запуском EvoCode")
+                self._report_progress("Изменения успешно закоммичены.")
+
         except CoreError as e:
             self._report_progress(f"ОШИБКА: {e}")
             return

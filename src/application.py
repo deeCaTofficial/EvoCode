@@ -73,7 +73,7 @@ class Application:
             return prompts_config
         except ConfigurationError as e:
             self.logger.error(f"Не удалось загрузить конфигурацию промптов: {e}")
-            return None
+            raise ConfigurationError("Ошибка при загрузке конфигурации")
 
     def _run_cli_mode(self):
         """Запускает приложение в режиме командной строки."""

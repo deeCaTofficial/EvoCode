@@ -127,6 +127,14 @@ class FileSystemTools:
         """Проверяет, является ли рабочая директория 'чистой' (нет несохраненных изменений)."""
         return not bool(self._run_git_command('status', '--porcelain'))
 
+    def git_add_all(self) -> str:
+        """Добавляет все файлы в индекс."""
+        return self._run_git_command('add', '.')
+
+    def git_commit(self, message: str) -> str:
+        """Создает коммит из индексированных файлов."""
+        return self._run_git_command('commit', '-m', message)
+
     def git_stash_create(self) -> str:
         """Сохраняет текущие изменения во временном хранилище (stash)."""
         return self._run_git_command('stash', 'push', '-u', '-m', 'evocode_autostash')

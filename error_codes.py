@@ -12,3 +12,4 @@ class ErrorCodes(IntEnum):
     MISSING_DEPENDENCY = 4
     NETWORK_ERROR = 5
     INVALID_INPUT = 6
+    FILE_NOT_FOUND = 7
