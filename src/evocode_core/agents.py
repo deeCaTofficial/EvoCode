@@ -112,7 +112,7 @@ class BaseToolAgent(BaseAgent):
         
         except CoreError as e:
             log.exception(f"Критическая ошибка API в цикле агента '{self.__class__.__name__}': {e}")
-            return {"status": "failure", "message": f"Критическая ошибка API: {e}"}
+            raise # Re-raise the CoreError
         finally:
             self.fs_tools.on_activity = None
 
@@ -159,8 +159,8 @@ class TextAgent(BaseAgent):
             parsed_data = self._parse_json_response(raw_text, expected_model)
             return {"status": "success", "message": parsed_data}
         except CoreError as e:
-            log.error(f"TextAgent столкнулся с ошибкой: {e}")
-            return {"status": "failure", "message": str(e)}
+            log.exception(f"TextAgent столкнулся с ошибкой: {e}")
+            raise # Re-raise the CoreError
 
 class ReadOnlyToolAgent(BaseToolAgent):
     """Агент с инструментами только для чтения."""

@@ -141,10 +141,16 @@ class FileSystemTools:
 
     def git_stash_revert(self) -> str:
         """Отменяет все изменения, возвращаясь к последнему состоянию до запуска."""
-        self._run_git_command('stash', 'pop') # Применяем stash, чтобы он не висел в списке
-        self._run_git_command('restore', '--staged', '.') # Очищаем индекс
-        self._run_git_command('restore', '.') # Отменяем изменения в файлах
-        self._run_git_command('clean', '-fd') # Удаляем новые неотслеживаемые файлы/папки
+        try:
+            self._run_git_command('stash', 'pop')
+        except ToolError as e:
+            if 'No stash entries found' not in str(e):
+                raise  # Перебрасываем другие ошибки Git
+            # Если stash не найден, это нормально. Просто очищаем рабочую директорию.
+        
+        self._run_git_command('restore', '--staged', '.')
+        self._run_git_command('restore', '.')
+        self._run_git_command('clean', '-fd')
         return "Все изменения, внесенные AI, были успешно отменены."
         
     def git_stash_commit(self, message: str) -> str:

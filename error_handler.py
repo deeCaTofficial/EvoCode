@@ -1,4 +1,5 @@
 import logging
+import sys
 from error_codes import ErrorCodes
 
 logger = logging.getLogger(__name__)
@@ -50,8 +51,6 @@ def exit_with_error(e: Exception) -> int:
     Returns:
         int: Код выхода, соответствующий типу ошибки.
     """
-    logger.exception(e)  # Logs the exception object and traceback
-
     if isinstance(e, EvoCodeError):
         return e.exit_code.value
     else:
